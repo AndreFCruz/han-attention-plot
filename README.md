@@ -1,5 +1,8 @@
 # han-attention-plot
-Plot of the attention in a HAN (Hierarchical Attention Networks)
+Plot of the attention in a HAN (Hierarchical Attention Networks).
+
+This repository contains already parsed data from a model trained on 644 news articles to dinstiguish _Hyperpartisan_ and _Mainstream_ media (```by-article-train_attn-data.json```).
+You can supply your own data as long as it follows the expected format (see [here](https://github.com/AndreFCruz/han-attention-plot/blob/47020e503d50c029d34875f10db9bc1d851b885e/index.html#L252)).
 
 > ```index.html``` was heavily based on [this open-source repo](https://github.com/minqi/hnatt).
 
