@@ -1,0 +1,334 @@
+<!doctype html>
+<html>
+	<header>
+	<meta charset="utf-8">
+		<title>HAN Attention</title>
+		<style>
+			body {
+				font-family: 'HelveticaNeue', 'Helvetica', 'Arial', sans-serif;
+				font-size: 18px;
+				margin: 0;
+				padding: 0;
+			}
+
+			ul {
+				list-style-type: none;
+				padding: 0;
+				margin: 0;
+			}
+
+			.container {
+				display: flex;
+				align-items: center;
+				position: relative;
+				flex-direction: column;
+				justify-content: center;
+				height: 100vh;
+				min-height: 640px;
+			}
+
+			.top-box, .bottom-box {
+				display: flex;
+				flex: 1 1;
+				height: 100%;
+				width: 100%;
+			}
+			.bottom-box {
+				border-top: 1px solid #eaeaea;
+				flex-grow: 10;
+			}
+			#text-input {
+				width: 100%;
+				height: 100%;
+				font-size: 18px;
+				outline: none;
+				border: none;
+				padding: 8px;
+				padding-bottom: 32px;
+				resize: none;
+				box-sizing: border-box;
+			}
+
+			.submit-btns {
+				display: flex;
+				align-items: center;
+				justify-content: center;
+				/*position: absolute;*/
+				top: 0vh;
+				font-size: 18px;
+			}
+
+			.submit-btn-left, .submit-btn-right {
+				text-align: center;
+				background: black;
+				color: white;
+				padding: 8px;
+				margin: 1em;
+				height: 48px;
+				width: 128px;
+				box-sizing: border-box;
+				border-radius: 120px;
+				transition: all 0.2s ease-out;
+			}
+			.submit-btn-left:hover, .submit-btn-right:hover {
+				background: #777;
+				/*color: black;*/
+				cursor: pointer;
+			}
+
+			.activation-map {
+				flex: 1 1;
+				padding: 8px;
+				padding-top: 32px;
+				max-width: 100%;
+				box-sizing: border-box;
+			}
+
+			#sentence-list li {
+				display: flex;
+				align-items: center;
+			}
+
+			.sentence {
+				padding-left: 32px;
+			}
+
+			.sentence-label {
+				width: 32px;
+				height: 22px;
+				display: inline-block;
+			}
+
+			.words-container {
+				width: 100%;
+			}
+
+			.word {
+				display: inline-block;
+				padding: 0 4px;
+			}
+
+			#prediction-container, #ground-truth-container {
+				margin-top: 8px;
+				color: #555;
+			}
+		</style>
+	</header>	
+
+	<body>
+		<div class='container'>
+			<div class='top-box'>
+			<textarea id='text-input'
+				placeholder='Enter article index'></textarea>
+			</div>
+
+			<div class='submit-btns'>
+				<input type='file' id='fileinput'>
+				<div class='submit-btn-left' onclick='loadFileFromInput()'>Load File</div>
+				
+				<div class='submit-btn-right' onclick='onClickSubmit()'>Run</div>
+			</div>
+
+			<div class='bottom-box'>
+				<div class='activation-map' id='activation-map'>
+					<ul id='sentence-list'></ul>
+				</div>
+			</div>
+		</div>
+		<footer>
+			<script>
+				var PLOT_PADDING_ATTENTION = false;
+
+				let xhttp = undefined;
+				if (window.XMLHttpRequest) {
+					// code for modern browsers
+					xhttp = new XMLHttpRequest();
+				 } else {
+					// code for old IE browsers
+					xhttp = new ActiveXObject("Microsoft.XMLHTTP");
+				}
+
+				var article_data;
+				function handleJSON(e) {
+					let lines = e.target.result;
+					article_data = JSON.parse(lines);
+
+					console.log('Loaded article data.')
+
+					let randIdx = Math.floor(Math.random() * article_data.length);
+					console.log('Article at idx ' + randIdx)
+					console.log(article_data[randIdx]);
+
+					alert('File loaded')
+				}
+
+				function loadFile(filepath, callback) {
+					fr = new FileReader();
+					fr.onload = callback;
+					fr.readAsText(filepath);
+				}
+
+				function loadFileFromInput() {
+					var input, file, fr;
+
+					if (typeof window.FileReader !== 'function') {
+					  alert("The file API isn't supported on this browser yet.");
+					  return;
+					}
+
+					input = document.getElementById('fileinput');
+					if (!input) {
+					  alert("Um, couldn't find the fileinput element.");
+					}
+					else if (!input.files) {
+					  alert("This browser doesn't seem to support the `files` property of file inputs.");
+					}
+					else if (!input.files[0]) {
+					  alert("Please select a file before clicking 'Load'");
+					}
+					else {
+					  file = input.files[0];
+					  loadFile(file, handleJSON)
+					}
+				}
+
+				let onClickSubmit = function(event) {
+					let articleIdx = document.getElementById("text-input").value;
+					renderActivationMap(articleIdx);
+				}
+
+				let getSentenceColorForActivation = function(a) {
+					return `rgba(0, 0, 255, ${a})`;
+				}
+
+				let getWordColorForActivation = function(a) {
+					return `rgba(255, 0, 0, ${a})`;
+				}
+
+				let createSentenceElement = function(sa, words, originalWords) {
+					if (words.length === originalWords.length + 1) {
+						if (PLOT_PADDING_ATTENTION) {
+							console.log('Plotting attention of padded tokens.');
+						} else {
+							words.pop();
+						}
+					}
+
+					let sentenceElement = document.createElement("li");
+					sentenceElement.className	 = 'sentence'; 
+					sentenceElement.style.backgroundColor = getSentenceColorForActivation(sa);
+
+					let wordsContainer = document.createElement('div');
+					wordsContainer.className = 'words-container';
+					wordsContainer.style.backgroundColor = 'white';
+					let s_weight = Math.sqrt(sa);
+					for (let i = 0; i < words.length; i++) {
+						let a = words[i][1];
+						// let w = originalWords[i];
+						let w = words[i][0];
+						wordsContainer.appendChild(createWordElement(w, a, s_weight));
+					}
+
+					// wordsContainer.appendChild(createWordElement('.', 0, sa));
+					sentenceElement.appendChild(wordsContainer);
+
+					return sentenceElement;
+				}
+
+				let createWordElement = function(w, a, s_weight) {
+					let wordElement = document.createElement("div");
+					wordElement.className = 'word';
+
+					word_activation = Math.pow(a, 1/4) * 0.8; // smoothed activation
+					// word_activation = Math.sqrt(a); // smoothed activation
+					// wordElement.style.backgroundColor = getWordColorForActivation(s_weight*a);
+					wordElement.style.backgroundColor = getWordColorForActivation(word_activation);
+					wordElement.innerText = w;
+					return wordElement;
+				}
+
+				let renderActivationMap = function(articleIdx) {
+					// // e.g.:
+					// data = {
+					// 	activations: [
+					// 		[
+					// 			[['The', 0.1], ['President', 0.2], ['of', 0.2], ['the', 0.3], ['United', 0.1], ['States', 0.1]],
+					// 			0.3,
+					// 		],
+					// 		[
+					// 			[['The', 0.2], ['buffoon', 0.1], ['in', 0.1], ['the', 0.2], ['highest', 0.1], ['office', 0.1], ['of', 0.1], ['the', 0.05], ['land', 0.05]],
+					// 			0.7,
+					// 		],
+					// 	],
+					// 	normalizedText: [
+					// 		'The President of the United States',
+					// 		'The buffoon in the highest office of the land',
+					// 	],
+					// 	prediction: true,
+					// 	binary: true,
+					// };
+
+					if (!article_data) {
+						alert('Please load a file before running the plotter');
+						return;
+					}
+
+					articleIdx = Number.parseInt(articleIdx);
+					data = article_data[articleIdx];
+
+					activations = data.activations;
+					normalizedText = data.normalizedText;
+					const sentenceList = document.getElementById('sentence-list');
+					while (sentenceList.firstChild) {
+						sentenceList.removeChild(sentenceList.firstChild);
+					}
+					let predictionContainer = document.getElementById('prediction-container');
+					let groundTruthContainer = document.getElementById('ground-truth-container');
+
+					if (predictionContainer) {
+						predictionContainer.remove();
+					}
+					if (groundTruthContainer) {
+						groundTruthContainer.remove();
+					}
+
+					for (let i = 0; i < activations.length; i++) {
+						let s = activations[i];
+						let words = s[0];
+						let originalWords = normalizedText[i].split(' ');
+						let sa = s[1];
+						sentenceList.appendChild(createSentenceElement(sa, words, originalWords))
+					}
+
+					renderPrediction(data.pred_value);
+					if (data.hyperpartisan) {
+						renderGroundTruth(data.hyperpartisan);
+					}
+				}
+
+				let renderPrediction = function(prediction) {
+					let predictionContainer = document.createElement("div");
+					predictionContainer.id = 'prediction-container';
+
+					let predictionText = 'Predicted rating: ' + prediction.toFixed(3);
+					predictionText += ' (' + (prediction >= 0.5 ? 'Hyperpartisan' : 'Mainstream') + ')';
+
+					predictionContainer.innerHTML = predictionText;
+					document.getElementById("activation-map").appendChild(predictionContainer);
+				}
+
+				let renderGroundTruth = function(groundTruth) {
+					let groundTruthContainer = document.createElement("div");
+					groundTruthContainer.id = 'ground-truth-container';
+
+					let groundTruthText = 'Ground truth: ' + (groundTruth == 'true' ? 'Hyperpartisan' : 'Mainstream');
+
+					groundTruthContainer.innerHTML = groundTruthText;
+					document.getElementById("activation-map").appendChild(groundTruthContainer);
+				}
+
+			</script>
+		</footer>
+	</body>
+
+</html>
